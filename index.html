@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <script type="text/javascript" src="http://ajax.googleapis.com/ajax/libs/jquery/1.6.2/jquery.min.js"> </script>
+    <meta charset="UTF-8">
+    <title>Title</title>
+    <link rel="stylesheet" href="root.css" />
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.3.4/dist/leaflet.css"
+          integrity="sha512-puBpdR0798OZvTTbP4A8Ix/l+A4dHDD0DGqYW6RQ+9jxkRFclaxxQb/SJAWZfWAkuyeQUytO7+7N4QKrDh+drA=="
+          crossorigin=""/>
+    <script src="https://unpkg.com/leaflet@1.3.4/dist/leaflet.js"
+            integrity="sha512-nMMmRyTVoLYqjP9hrbed9S+FzjZHW5gY1TWCHA5ckwXZBadntCNs8kEqAWdrb9O7rxbCaA4lKTIWjDXZxflOcA=="
+            crossorigin=""></script>
+
+
+</head>
+<body>
+
+<div id="pathMap"></div>
+</body>
+<script>
+
+    async function getLatLong() {
+        let latArr= [], lonArr = [], latLongArr = [];
+        await $.getJSON('workout-data.json', function(data) {
+            var lookInto = data.samples;
+
+            for( let key in lookInto ) {
+                let latData = lookInto[key].values.positionLat;
+                let lonData = lookInto[key].values.positionLong;
+                let tmpArr = [];
+                if(latData && lonData) {
+                    tmpArr.push(latData, lonData);
+                    latLongArr.push(tmpArr);
+                }
+            }
+            console.log(latLongArr);
+            //console.log(latArr);
+            //console.log(lonArr);
+            //console.log(selectData.length);
+            $.each(data.samples, function(i, f){
+
+            })
+
+        });
+        return latLongArr;
+    }
+
+    getLatLong().then((coordsArr) => {
+        var pMap = L.map('pathMap').setView([coordsArr[0][0], coordsArr[0][1]], 13);
+
+        L.tileLayer('https://api.tiles.mapbox.com/v4/{id}/{z}/{x}/{y}.png?access_token={accessToken}', {
+            attribution: 'Map data &copy; <a href="https://www.openstreetmap.org/">OpenStreetMap</a> contributors, <a href="https://creativecommons.org/licenses/by-sa/2.0/">CC-BY-SA</a>, Imagery © <a href="https://www.mapbox.com/">Mapbox</a>',
+            maxZoom: 18,
+            id: 'mapbox.streets',
+            accessToken: "sk.eyJ1IjoiZ2FycmV0amFtZXMiLCJhIjoiY2pwc25nNW1mMDZxazQybzFmMWZkODh0aiJ9.yaklt83I1FIpv142VljhEg"
+        }).addTo(pMap);
+    })
+
+</script>
+</html>
