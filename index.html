@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en">
+<html>
 <head>
     <script type="text/javascript" src="http://ajax.googleapis.com/ajax/libs/jquery/1.6.2/jquery.min.js"> </script>
     <meta charset="UTF-8">
@@ -21,7 +21,7 @@
 <script>
 
     async function getLatLong() {
-        let latArr= [], lonArr = [], latLongArr = [];
+        let latLongArr = [];
         await $.getJSON('workout-data.json', function(data) {
             var lookInto = data.samples;
 
@@ -29,6 +29,8 @@
                 let latData = lookInto[key].values.positionLat;
                 let lonData = lookInto[key].values.positionLong;
                 let tmpArr = [];
+
+                //TODO change into a try catch statement
                 if(latData && lonData) {
                     tmpArr.push(latData, lonData);
                     latLongArr.push(tmpArr);
@@ -53,6 +55,7 @@
         let polyline = L.polyline(latlongs, {color: 'blue'}).addTo(pMap);
         pMap.fitBounds(polyline.getBounds());
         L.tileLayer('https://api.tiles.mapbox.com/v4/{id}/{z}/{x}/{y}.png?access_token={accessToken}', {
+            //TODO rewrite this
             attribution: 'Map data &copy; <a href="https://www.openstreetmap.org/">OpenStreetMap</a> contributors, <a href="https://creativecommons.org/licenses/by-sa/2.0/">CC-BY-SA</a>, Imagery © <a href="https://www.mapbox.com/">Mapbox</a>',
             maxZoom: 18,
             id: 'mapbox.streets',
