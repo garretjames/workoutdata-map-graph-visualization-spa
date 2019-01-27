@@ -18,11 +18,14 @@
 <div id="pathMap"></div>
 <br/>
 <div id="pwrGraph"></div>
+<br/>
+<div id="pwrAvg"></div>
 </body>
 <script>
 	//TODO comment code
 
 	const WORKOUT_DATA = "workout-data-sm.json";
+	const MAPBOX_API_TOKEN = "sk.eyJ1IjoiZ2FycmV0amFtZXMiLCJhIjoiY2pwc25nNW1mMDZxazQybzFmMWZkODh0aiJ9.yaklt83I1FIpv142VljhEg";
 
 	const dataReq = async () => {
 		let workoutData = {};
@@ -30,19 +33,21 @@
 			let response = await fetch(WORKOUT_DATA);
 			workoutData = await response.json();
 		} catch (e) {
-			alert(e);
-			console.log("Error fetching JSON data");
+			alert("Error fetching JSON data");
+			console.log(e);
 		}
 		return processDataReq(workoutData);
-
 	};
 
 	function processDataReq(data) {
 		console.log(data);
 
-		//Strip the data down to just the samples to send
+		//Strip the data down to just the samples to send to the functions
 		createMap(data.samples);
-		createGraph(data.samples);
+		//TODO clean data.samples of just power and time to pass to function since it has multiple calls
+        //Get the power stats and time isolated to be used in multiple functions
+        let pwrTimArr = getPowerStats(data.samples);
+        createGraph(pwrTimArr);
 		console.log(calcPwrAvg(data.samples));
 	}
 
@@ -67,10 +72,10 @@
 		return latLongArr;
 	}
 
+	//polyline is in global scope so the selection handler of the graph can access it.
 	let polyline;
 
 	function createMap(data, timeBounds) {
-		//TODO may not need timeBounds var in this method
 		const coordsArr = getLatLongs(data, timeBounds);
 		console.log(coordsArr);
 
@@ -78,16 +83,16 @@
 		polyline = L.polyline(coordsArr, {color: 'blue'}).addTo(pMap);
 		pMap.fitBounds(polyline.getBounds());
 		L.tileLayer('https://api.tiles.mapbox.com/v4/{id}/{z}/{x}/{y}.png?access_token={accessToken}', {
-			//TODO rewrite this
 			attribution: 'Map data &copy; <a href="https://www.openstreetmap.org/">OpenStreetMap</a> contributors, <a href="https://creativecommons.org/licenses/by-sa/2.0/">CC-BY-SA</a>, Imagery © <a href="https://www.mapbox.com/">Mapbox</a>',
 			maxZoom: 18,
 			id: 'mapbox.streets',
-			accessToken: "sk.eyJ1IjoiZ2FycmV0amFtZXMiLCJhIjoiY2pwc25nNW1mMDZxazQybzFmMWZkODh0aiJ9.yaklt83I1FIpv142VljhEg"
+			accessToken: MAPBOX_API_TOKEN
 		}).addTo(pMap);
 
 	}
 
 	function getPowerStats(data) {
+		let pwrArr = [];
 		let pwrTimeArr = [];
 
 		for (let key in data) {
@@ -103,9 +108,11 @@
 	}
 
 	function createGraph(data) {
-		const pwrTimeStatsArr = getPowerStats(data);
+		const pwrTimeStatsArr = data;
 		let xData = [];
 		let yData = [];
+		let graphDiv = document.getElementById("pwrGraph");
+
 
 		$.each(pwrTimeStatsArr, function (index, value) {
 			$.each(value, function (key, value) {
@@ -128,7 +135,7 @@
 			clickmode: 'select',
 			dragmode: 'select',
 			hovermode: 'closest',
-			title: 'Peaks Graph',
+			title: 'Power Effort Over Time',
 			xaxis: {
 				title: 'Time (minutes)'
 			},
@@ -136,7 +143,7 @@
 				title: 'Power'
 			}
 		}
-		let graphDiv = document.getElementById("pwrGraph");
+
 		Plotly.newPlot(graphDiv, plotData, layout);
 
 		//TODO have click handler reset map to all latlongs
@@ -152,29 +159,29 @@
 	}
 
 
-    let allAvg = [];
-    allAvg.push(0);
+	let allAvg = [];
+	allAvg.push(0);
+
 	function calcPwrAvg(data, timeBounds = [0, 1200000]) {
 
+		//TODO is there a better way to reduce the array
 		let lookInto = data.filter((item) => {
-          return item.millisecondOffset >= timeBounds[0] && item.millisecondOffset <= timeBounds[1];
-        });
-			let pwrSum = 0;
-			for (let key in lookInto) {
-				let pwrData = lookInto[key].values.power;
-                pwrSum += pwrData;
-				//TODO better sum function
-			}
+			return item.millisecondOffset >= timeBounds[0] && item.millisecondOffset <= timeBounds[1];
+		});
+		let pwrSum = 0;
+		for (let key in lookInto) {
+			let pwrData = lookInto[key].values.power;
+			pwrSum += pwrData;
+			//TODO better sum function
+		}
 
-			let pwrAvg = pwrSum / lookInto.length;
-			if (allAvg[0] < pwrAvg) {
-				allAvg[0] = pwrAvg;
-			}
+		let pwrAvg = pwrSum / lookInto.length;
+		if (allAvg[0] < pwrAvg) {
+			allAvg[0] = pwrAvg;
+		}
 
-			//console.log(allAvg);
-            //console.log(lookInto[lookInto.length - 1] === data[data.length - 1]);
-			return lookInto[lookInto.length - 1] === data[data.length - 1] ? allAvg : calcPwrAvg(data, [timeBounds[0] + 1000, timeBounds[1] + 1000]);
-    }
+		return lookInto[lookInto.length - 1] === data[data.length - 1] ? allAvg : calcPwrAvg(data, [timeBounds[0] + 1000, timeBounds[1] + 1000]);
+	}
 
 </script>
 </html>
