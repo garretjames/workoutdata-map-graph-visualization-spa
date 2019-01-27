@@ -20,13 +20,17 @@
 <div id="pwrGraph"></div>
 <br/>
 <div id="pwrAvg"></div>
+<div id="pwrAvg1"></div>
+<div id="pwrAvg2"></div>
 </body>
 <script>
+    //TODO Display the averages in HTML
 	//TODO comment code
 
-	const WORKOUT_DATA = "workout-data-sm.json";
+	const WORKOUT_DATA = "workout-data.json";
 	const MAPBOX_API_TOKEN = "sk.eyJ1IjoiZ2FycmV0amFtZXMiLCJhIjoiY2pwc25nNW1mMDZxazQybzFmMWZkODh0aiJ9.yaklt83I1FIpv142VljhEg";
 
+	//Initiate API request (T-10...)
 	const dataReq = async () => {
 		let workoutData = {};
 		try {
@@ -39,20 +43,23 @@
 		return processDataReq(workoutData);
 	};
 
+    //
 	function processDataReq(data) {
 		console.log(data);
 
 		//Strip the data down to just the samples to send to the functions
 		createMap(data.samples);
-		//TODO clean data.samples of just power and time to pass to function since it has multiple calls
+        createGraph(data.samples);
         //Get the power stats and time isolated to be used in multiple functions
         let pwrTimArr = getPowerStats(data.samples);
-        createGraph(pwrTimArr);
-		console.log(calcPwrAvg(data.samples));
+        console.log(calcPwrAvg(pwrTimArr, [0, 60000]));
+        console.log(calcPwrAvg(pwrTimArr, [0, 300000]));
+        console.log(calcPwrAvg(pwrTimArr, [0, 600000]));
+        console.log(calcPwrAvg(pwrTimArr, [0, 900000]));
+        console.log(calcPwrAvg(pwrTimArr));
 	}
 
-	dataReq();
-
+    //
 	function getLatLongs(data, timeBounds) {
 		let latLongArr = [];
 		let lookInto;
@@ -72,7 +79,6 @@
 		return latLongArr;
 	}
 
-	//polyline is in global scope so the selection handler of the graph can access it.
 	let polyline;
 
 	function createMap(data, timeBounds) {
@@ -91,32 +97,31 @@
 
 	}
 
+
 	function getPowerStats(data) {
-		let pwrArr = [];
 		let pwrTimeArr = [];
 
 		for (let key in data) {
-			let timeOffset = data[key].millisecondOffset;
-			let pwrData = data[key].values.power;
-			let minutes = ((timeOffset / 1000) / 60);
+            let time = data[key].millisecondOffset;
+			let power = data[key].values.power;
 
-			if (pwrData) {
-				pwrTimeArr.push({"time": minutes, "power": pwrData});
+			if (power) {
+				pwrTimeArr.push({time, power});
 			}
 		}
 		return pwrTimeArr;
 	}
 
+    //Call in the external mapping API with the data sent from the API request to...
 	function createGraph(data) {
-		const pwrTimeStatsArr = data;
+		const pwrTimeStatsArr = getPowerStats(data);
 		let xData = [];
 		let yData = [];
 		let graphDiv = document.getElementById("pwrGraph");
 
-
 		$.each(pwrTimeStatsArr, function (index, value) {
 			$.each(value, function (key, value) {
-				key === 'time' ? xData.push(value) : yData.push(value)
+				key === 'time' ? xData.push((value/ 1000) / 60) : yData.push(value)
 			})
 		});
 
@@ -158,21 +163,16 @@
 		});
 	}
 
+    //Recursive function that will calculate the highest continuous average of power for the given time period that is lasso'd over the graph UI
+	function calcPwrAvg(data, timeBounds = [0, 1200000], allAvg = [0]) {
 
-	let allAvg = [];
-	allAvg.push(0);
-
-	function calcPwrAvg(data, timeBounds = [0, 1200000]) {
-
-		//TODO is there a better way to reduce the array
 		let lookInto = data.filter((item) => {
-			return item.millisecondOffset >= timeBounds[0] && item.millisecondOffset <= timeBounds[1];
+			return item.time >= timeBounds[0] && item.time <= timeBounds[1];
 		});
 		let pwrSum = 0;
 		for (let key in lookInto) {
-			let pwrData = lookInto[key].values.power;
+			let pwrData = lookInto[key].power;
 			pwrSum += pwrData;
-			//TODO better sum function
 		}
 
 		let pwrAvg = pwrSum / lookInto.length;
@@ -180,8 +180,9 @@
 			allAvg[0] = pwrAvg;
 		}
 
-		return lookInto[lookInto.length - 1] === data[data.length - 1] ? allAvg : calcPwrAvg(data, [timeBounds[0] + 1000, timeBounds[1] + 1000]);
+		return lookInto[lookInto.length - 1] === data[data.length - 1] ? allAvg : calcPwrAvg(data, [timeBounds[0] + 1000, timeBounds[1] + 1000], allAvg);
 	}
 
+		dataReq();
 </script>
 </html>
