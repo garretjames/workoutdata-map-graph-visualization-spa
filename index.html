@@ -2,7 +2,7 @@
 <html>
 <head>
     <meta charset="UTF-8">
-    <title>Title</title>
+    <title>Plotly+Leaflet Workout Data Integration</title>
     <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
     <script src="http://code.jquery.com/jquery-1.7.2.min.js"></script>
     <link rel="stylesheet" href="root.css"/>
@@ -17,63 +17,65 @@
 
 <div id="pathMap"></div>
 <br/>
-<div id="btn1">ClickMe</div>
-<br/>
-<br/>
 <div id="pwrGraph"></div>
 </body>
 <script>
-    //TODO comment code
+	//TODO comment code
 
-    async function getData() {
-	    let sampleDataArr = [];
-	    await $.getJSON('workout-data-sm.json', function (data) {
-		    sampleDataArr = data.samples;
+	const WORKOUT_DATA = "workout-data-sm.json";
 
-	    });
-	    return sampleDataArr;
-    }
+	const dataReq = async () => {
+		let workoutData = {};
+		try {
+			let response = await fetch(WORKOUT_DATA);
+			workoutData = await response.json();
+		} catch (e) {
+			alert(e);
+			console.log("Error fetching JSON data");
+		}
+		return processDataReq(workoutData);
 
+	};
 
-	let polyline;
+	function processDataReq(data) {
+		console.log(data);
 
-	async function getLatLong(timeBounds) {
+		//Strip the data down to just the samples to send
+		createMap(data.samples);
+		createGraph(data.samples);
+		console.log(calcPwrAvg(data.samples));
+	}
+
+	dataReq();
+
+	function getLatLongs(data, timeBounds) {
 		let latLongArr = [];
-		await $.getJSON('workout-data.json', function (data) {
-			let lookInto;
-			if (timeBounds) {
-				lookInto = data.samples.filter((item) => {
-					//console.log(self);
-					return item.millisecondOffset >= timeBounds[0] && item.millisecondOffset <= timeBounds[1]
-				})
-			} else {
-				lookInto = data.samples;
+		let lookInto;
+
+		timeBounds ? lookInto = data.filter((item) => {
+			return item.millisecondOffset >= timeBounds[0] && item.millisecondOffset <= timeBounds[1]
+		}) : lookInto = data;
+
+		for (let key in lookInto) {
+			let latData = lookInto[key].values.positionLat;
+			let lonData = lookInto[key].values.positionLong;
+
+			if (latData && lonData) {
+				latLongArr.push([latData, lonData]);
 			}
-			for (let key in lookInto) {
-				let latData = lookInto[key].values.positionLat;
-				let lonData = lookInto[key].values.positionLong;
-				let tmpArr = [];
-
-				//TODO change into a try catch statement
-				if (latData && lonData) {
-					tmpArr.push(latData, lonData);
-					latLongArr.push(tmpArr);
-				}
-			}
-			console.log(latLongArr);
-			$.each(data.samples, function (i, f) {
-
-			})
-
-		});
+		}
 		return latLongArr;
 	}
 
-	getLatLong().then((coordsArr) => {
-		let latlongs = coordsArr;
+	let polyline;
+
+	function createMap(data, timeBounds) {
+		//TODO may not need timeBounds var in this method
+		const coordsArr = getLatLongs(data, timeBounds);
+		console.log(coordsArr);
 
 		var pMap = L.map('pathMap').setView([coordsArr[0][0], coordsArr[0][1]], 13);
-		polyline = L.polyline(latlongs, {color: 'blue'}).addTo(pMap);
+		polyline = L.polyline(coordsArr, {color: 'blue'}).addTo(pMap);
 		pMap.fitBounds(polyline.getBounds());
 		L.tileLayer('https://api.tiles.mapbox.com/v4/{id}/{z}/{x}/{y}.png?access_token={accessToken}', {
 			//TODO rewrite this
@@ -82,52 +84,34 @@
 			id: 'mapbox.streets',
 			accessToken: "sk.eyJ1IjoiZ2FycmV0amFtZXMiLCJhIjoiY2pwc25nNW1mMDZxazQybzFmMWZkODh0aiJ9.yaklt83I1FIpv142VljhEg"
 		}).addTo(pMap);
-		$("#btn1").click(function () {
-			alert("hello");
-			pMap.createPane("HighlightPath");
-			polyline.setLatLngs([]);
-		});
 
-		console.log(pMap.getPanes());
-	});
+	}
 
-	let data = [];
-
-	async function getPower() {
+	function getPowerStats(data) {
 		let pwrTimeArr = [];
-		await $.getJSON('workout-data.json', function (data) {
-			var lookInto = data.samples;
 
-			for (let key in lookInto) {
-				let timeOffset = lookInto[key].millisecondOffset;
-				let pwrData = lookInto[key].values.power;
-				let minutes = ((timeOffset / 1000) / 60);
-				//TODO change into a try catch statement
-				if (pwrData) {
-					let tmpObj = {"time": minutes, "power": pwrData}
-					pwrTimeArr.push(tmpObj);
-				}
+		for (let key in data) {
+			let timeOffset = data[key].millisecondOffset;
+			let pwrData = data[key].values.power;
+			let minutes = ((timeOffset / 1000) / 60);
+
+			if (pwrData) {
+				pwrTimeArr.push({"time": minutes, "power": pwrData});
 			}
-			console.log(pwrTimeArr);
-			$.each(data.samples, function (i, f) {
-
-			})
-
-		});
+		}
 		return pwrTimeArr;
 	}
 
-	let xData = [];
-	let yData = [];
-	getPower().then((pwrTimeArr) => {
-		data = pwrTimeArr;
+	function createGraph(data) {
+		const pwrTimeStatsArr = getPowerStats(data);
+		let xData = [];
+		let yData = [];
 
-		$.each(data, function (index, value) {
+		$.each(pwrTimeStatsArr, function (index, value) {
 			$.each(value, function (key, value) {
 				key === 'time' ? xData.push(value) : yData.push(value)
 			})
-		})
-		console.log(xData);
+		});
 
 		let trace1 = {
 			x: xData,
@@ -155,66 +139,42 @@
 		let graphDiv = document.getElementById("pwrGraph");
 		Plotly.newPlot(graphDiv, plotData, layout);
 
+		//TODO have click handler reset map to all latlongs
 		graphDiv.on('plotly_selected', function (eventData) {
-				console.log(eventData.range.x);
-				let begMilliTime = (eventData.range.x[0] * 60) * 1000;
-				let endMilliTime = (eventData.range.x[1] * 60) * 1000;
-				let milliTime = [begMilliTime, endMilliTime];
-				getLatLong(milliTime).then((latLngArr) =>
-					//console.log(latLngArr));
-					polyline.setLatLngs(latLngArr));
-			}
-		)
+			console.log(eventData.range.x);
+			let begMilliTime = (eventData.range.x[0] * 60) * 1000;
+			let endMilliTime = (eventData.range.x[1] * 60) * 1000;
+			let milliTime = [begMilliTime, endMilliTime];
+			let highlightPath = getLatLongs(data, milliTime);
 
-	});
+			polyline.setLatLngs(highlightPath);
+		});
+	}
 
 
+    let allAvg = [];
+    allAvg.push(0);
+	function calcPwrAvg(data, timeBounds = [0, 1200000]) {
 
-
-	let dataArrGl = getData();
-	let lookInto = [];
-	let avg2 = 0;
-	//let pwrAvg = 0;
-	let allAvg = [];
-	allAvg.push(avg2);
-
-
-    async function getHighestContAvg(timeBounds) {
-		if (isNaN(timeBounds[0]) || isNaN(timeBounds[1])) {
-			throw "EOF: Out of Bounds";
-		}
-		//getData().then((sampleData) => {
-		//sampleData.filter()
-		//})
-		//await $.getJSON('workout-data-sm.json', function (data) {
-
-			lookInto = dataArrGl.filter((item) => {
-				return item.millisecondOffset >= timeBounds[0] && item.millisecondOffset <= timeBounds[1]
-			})
-
-            let pwrAvg = 0;
+		let lookInto = data.filter((item) => {
+          return item.millisecondOffset >= timeBounds[0] && item.millisecondOffset <= timeBounds[1];
+        });
+			let pwrSum = 0;
 			for (let key in lookInto) {
 				let pwrData = lookInto[key].values.power;
-				pwrAvg += pwrData;
+                pwrSum += pwrData;
 				//TODO better sum function
 			}
-			avg2 = pwrAvg / lookInto.length;
-			if (allAvg[0] < avg2) {
-				allAvg[0] = avg2;
+
+			let pwrAvg = pwrSum / lookInto.length;
+			if (allAvg[0] < pwrAvg) {
+				allAvg[0] = pwrAvg;
 			}
-			//allAvg.push(avg2);
 
-			console.log(allAvg);
-
-		return lookInto[lookInto.length - 1].eventType === "stop" ? allAvg : getHighestContAvg([timeBounds[0] + 1000, timeBounds[1] + 1000]);
-	}
-
-
-	try {
-		getHighestContAvg([0, 1200000]).then((pwrAvg) => console.log(pwrAvg));
-	} catch (e) {
-		console.log(e);
-	}
+			//console.log(allAvg);
+            //console.log(lookInto[lookInto.length - 1] === data[data.length - 1]);
+			return lookInto[lookInto.length - 1] === data[data.length - 1] ? allAvg : calcPwrAvg(data, [timeBounds[0] + 1000, timeBounds[1] + 1000]);
+    }
 
 </script>
 </html>
