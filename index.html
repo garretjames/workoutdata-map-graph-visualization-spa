@@ -1,61 +1,215 @@
+<script>
+	/**
+	 This program is free software: you can redistribute it and/or modify
+	 it under the terms of the GNU General Public License as published by
+	 the Free Software Foundation, either version 3 of the License, or
+	 (at your option) any later version.
+
+	 This program is distributed in the hope that it will be useful,
+	 but WITHOUT ANY WARRANTY; without even the implied warranty of
+	 MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+	 GNU General Public License for more details.
+
+	 You should have received a copy of the GNU General Public License
+	 along with this program.  If not, see <http://www.gnu.org/licenses/>.
+	 **/
+
+	/**
+	 *@author Garret James Hornby
+	 **/
+</script>
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <script type="text/javascript" src="http://ajax.googleapis.com/ajax/libs/jquery/1.6.2/jquery.min.js"> </script>
     <meta charset="UTF-8">
-    <title>Title</title>
-    <link rel="stylesheet" href="root.css" />
+    <title>Plotly+Leaflet Workout Data Integration</title>
+    <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
+    <script src="http://code.jquery.com/jquery-1.7.2.min.js"></script>
+    <link rel="stylesheet" href="root.css"/>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.3.4/dist/leaflet.css"
           integrity="sha512-puBpdR0798OZvTTbP4A8Ix/l+A4dHDD0DGqYW6RQ+9jxkRFclaxxQb/SJAWZfWAkuyeQUytO7+7N4QKrDh+drA=="
           crossorigin=""/>
     <script src="https://unpkg.com/leaflet@1.3.4/dist/leaflet.js"
             integrity="sha512-nMMmRyTVoLYqjP9hrbed9S+FzjZHW5gY1TWCHA5ckwXZBadntCNs8kEqAWdrb9O7rxbCaA4lKTIWjDXZxflOcA=="
             crossorigin=""></script>
-
-
 </head>
 <body>
 
 <div id="pathMap"></div>
+<br/>
+<div id="pwrGraph"></div>
+<br/>
+<div id="pwrAvg0"></div>
+<div id="pwrAvg1"></div>
+<div id="pwrAvg2"></div>
+<div id="pwrAvg3"></div>
+<div id="pwrAvg4"></div>
+
 </body>
 <script>
 
-    async function getLatLong() {
-        let latArr= [], lonArr = [], latLongArr = [];
-        await $.getJSON('workout-data.json', function(data) {
-            var lookInto = data.samples;
+	const WORKOUT_DATA = "workout-data.json";
+	const MAPBOX_API_TOKEN = "sk.eyJ1IjoiZ2FycmV0amFtZXMiLCJhIjoiY2pwc25nNW1mMDZxazQybzFmMWZkODh0aiJ9.yaklt83I1FIpv142VljhEg";
 
-            for( let key in lookInto ) {
-                let latData = lookInto[key].values.positionLat;
-                let lonData = lookInto[key].values.positionLong;
-                let tmpArr = [];
-                if(latData && lonData) {
-                    tmpArr.push(latData, lonData);
-                    latLongArr.push(tmpArr);
-                }
-            }
-            console.log(latLongArr);
-            //console.log(latArr);
-            //console.log(lonArr);
-            //console.log(selectData.length);
-            $.each(data.samples, function(i, f){
+	//Initiate API request (T-10...)
+	const dataReq = async () => {
+		let workoutData = {};
+		try {
+			let response = await fetch(WORKOUT_DATA);
+			workoutData = await response.json();
+		} catch (e) {
+			alert("Error fetching JSON data");
+			console.log(e);
+		}
+		return processDataReq(workoutData);
+	};
 
-            })
+	//Passes the JSON data on success to functions to create the map and graph
+	function processDataReq(data) {
 
-        });
-        return latLongArr;
-    }
+		//Strip the data down to just the samples to send to the functions
+		createMap(data.samples);
+		createGraph(data.samples);
 
-    getLatLong().then((coordsArr) => {
-        var pMap = L.map('pathMap').setView([coordsArr[0][0], coordsArr[0][1]], 13);
+		//Get the power stats and time isolated to be used in multiple functions
+		let pwrTimArr = getPowerStats(data.samples);
 
-        L.tileLayer('https://api.tiles.mapbox.com/v4/{id}/{z}/{x}/{y}.png?access_token={accessToken}', {
-            attribution: 'Map data &copy; <a href="https://www.openstreetmap.org/">OpenStreetMap</a> contributors, <a href="https://creativecommons.org/licenses/by-sa/2.0/">CC-BY-SA</a>, Imagery © <a href="https://www.mapbox.com/">Mapbox</a>',
-            maxZoom: 18,
-            id: 'mapbox.streets',
-            accessToken: "sk.eyJ1IjoiZ2FycmV0amFtZXMiLCJhIjoiY2pwc25nNW1mMDZxazQybzFmMWZkODh0aiJ9.yaklt83I1FIpv142VljhEg"
-        }).addTo(pMap);
-    })
+		const pwrAvg0 = calcPwrAvg(pwrTimArr);
+		const pwrAvg1 = calcPwrAvg(pwrTimArr, [0, 900000]);
+		const pwrAvg2 = calcPwrAvg(pwrTimArr, [0, 600000]);
+		const pwrAvg3 = calcPwrAvg(pwrTimArr, [0, 300000]);
+		const pwrAvg4 = calcPwrAvg(pwrTimArr, [0, 60000]);
 
+		$("#pwrAvg0").text("20 minute best power effort: " + pwrAvg0);
+		$("#pwrAvg1").text("15 minute best power effort: " + pwrAvg1);
+		$("#pwrAvg2").text("10 minute best power effort: " + pwrAvg2);
+		$("#pwrAvg3").text("5 minute best power effort: " + pwrAvg3);
+		$("#pwrAvg4").text("1 minute best power effort: " + pwrAvg4);
+	}
+
+	//Parse the JSON data of just Latitude and Longitude info to map out the travelled path
+	function getLatLongs(data, timeBounds) {
+		let latLongArr = [];
+		let lookInto;
+
+		timeBounds ? lookInto = data.filter((item) => {
+			return item.millisecondOffset >= timeBounds[0] && item.millisecondOffset <= timeBounds[1]
+		}) : lookInto = data;
+
+		for (let key in lookInto) {
+			let latData = lookInto[key].values.positionLat;
+			let lonData = lookInto[key].values.positionLong;
+
+			if (latData && lonData) {
+				latLongArr.push([latData, lonData]);
+			}
+		}
+		return latLongArr;
+	}
+
+	let polyline;
+
+	//Creates the map using Leaflet JS API with given JSON data and timeBounds given in milliseconds
+	function createMap(data, timeBounds) {
+		const coordsArr = getLatLongs(data, timeBounds);
+
+		var pMap = L.map('pathMap').setView([coordsArr[0][0], coordsArr[0][1]], 13);
+		polyline = L.polyline(coordsArr, {color: 'blue'}).addTo(pMap);
+		pMap.fitBounds(polyline.getBounds());
+		L.tileLayer('https://api.tiles.mapbox.com/v4/{id}/{z}/{x}/{y}.png?access_token={accessToken}', {
+			attribution: 'Map data &copy; <a href="https://www.openstreetmap.org/">OpenStreetMap</a> contributors, <a href="https://creativecommons.org/licenses/by-sa/2.0/">CC-BY-SA</a>, Imagery © <a href="https://www.mapbox.com/">Mapbox</a>',
+			maxZoom: 18,
+			id: 'mapbox.streets',
+			accessToken: MAPBOX_API_TOKEN
+		}).addTo(pMap);
+	}
+
+	//Returns an array of JSON with just the time and power information to create the graph
+	function getPowerStats(data) {
+		let pwrTimeArr = [];
+
+		for (let key in data) {
+			let time = data[key].millisecondOffset;
+			let power = data[key].values.power;
+
+			if (power) {
+				pwrTimeArr.push({time, power});
+			}
+		}
+		return pwrTimeArr;
+	}
+
+	//Utilizing Plotly JS API (Wraps around D3) to create the power effort graph
+	function createGraph(data) {
+		const pwrTimeStatsArr = getPowerStats(data);
+		let xData = [];
+		let yData = [];
+		let graphDiv = document.getElementById("pwrGraph");
+
+		$.each(pwrTimeStatsArr, function (index, value) {
+			$.each(value, function (key, value) {
+				key === 'time' ? xData.push((value / 1000) / 60) : yData.push(value)
+			})
+		});
+
+		let trace1 = {
+			x: xData,
+			y: yData,
+			mode: 'lines',
+			name: 'Lines',
+			line: {color: '#777'},
+			marker: {size: 14}
+		}
+
+		let plotData = [trace1];
+
+		let layout = {
+			clickmode: 'select',
+			dragmode: 'select',
+			hovermode: 'closest',
+			title: 'Power Effort Over Time',
+			xaxis: {
+				title: 'Time (minutes)'
+			},
+			yaxis: {
+				title: 'Power'
+			}
+		};
+
+		Plotly.newPlot(graphDiv, plotData, layout);
+
+		graphDiv.on('plotly_selected', function (eventData) {
+			//console.log(eventData.range.x);
+			let begMilliTime = (eventData.range.x[0] * 60) * 1000;
+			let endMilliTime = (eventData.range.x[1] * 60) * 1000;
+			let milliTime = [begMilliTime, endMilliTime];
+			let highlightPath = getLatLongs(data, milliTime);
+
+			polyline.setLatLngs(highlightPath);
+		});
+	}
+
+	//Recursive function that will calculate the highest continuous average of power for the given time period that is lasso'd over the graph UI
+	function calcPwrAvg(data, timeBounds = [0, 1200000], allAvg = [0]) {
+
+		let lookInto = data.filter((item) => {
+			return item.time >= timeBounds[0] && item.time <= timeBounds[1];
+		});
+		let pwrSum = 0;
+		for (let key in lookInto) {
+			let pwrData = lookInto[key].power;
+			pwrSum += pwrData;
+		}
+
+		let pwrAvg = pwrSum / lookInto.length;
+		if (allAvg[0] < pwrAvg) {
+			allAvg[0] = pwrAvg;
+		}
+
+		return lookInto[lookInto.length - 1] === data[data.length - 1] ? allAvg : calcPwrAvg(data, [timeBounds[0] + 1000, timeBounds[1] + 1000], allAvg);
+	}
+
+	//Init main function
+	dataReq();
 </script>
 </html>
