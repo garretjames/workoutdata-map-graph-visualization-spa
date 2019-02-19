@@ -1,5 +1,25 @@
+<script>
+	/**
+	 This program is free software: you can redistribute it and/or modify
+	 it under the terms of the GNU General Public License as published by
+	 the Free Software Foundation, either version 3 of the License, or
+	 (at your option) any later version.
+
+	 This program is distributed in the hope that it will be useful,
+	 but WITHOUT ANY WARRANTY; without even the implied warranty of
+	 MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+	 GNU General Public License for more details.
+
+	 You should have received a copy of the GNU General Public License
+	 along with this program.  If not, see <http://www.gnu.org/licenses/>.
+	 **/
+
+	/**
+	 *@author Garret James Hornby
+	 **/
+</script>
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
     <meta charset="UTF-8">
     <title>Plotly+Leaflet Workout Data Integration</title>
@@ -19,13 +39,14 @@
 <br/>
 <div id="pwrGraph"></div>
 <br/>
-<div id="pwrAvg"></div>
+<div id="pwrAvg0"></div>
 <div id="pwrAvg1"></div>
 <div id="pwrAvg2"></div>
+<div id="pwrAvg3"></div>
+<div id="pwrAvg4"></div>
+
 </body>
 <script>
-    //TODO Display the averages in HTML
-	//TODO comment code
 
 	const WORKOUT_DATA = "workout-data.json";
 	const MAPBOX_API_TOKEN = "sk.eyJ1IjoiZ2FycmV0amFtZXMiLCJhIjoiY2pwc25nNW1mMDZxazQybzFmMWZkODh0aiJ9.yaklt83I1FIpv142VljhEg";
@@ -43,23 +64,30 @@
 		return processDataReq(workoutData);
 	};
 
-    //
+	//Passes the JSON data on success to functions to create the map and graph
 	function processDataReq(data) {
-		console.log(data);
 
 		//Strip the data down to just the samples to send to the functions
 		createMap(data.samples);
-        createGraph(data.samples);
-        //Get the power stats and time isolated to be used in multiple functions
-        let pwrTimArr = getPowerStats(data.samples);
-        console.log(calcPwrAvg(pwrTimArr, [0, 60000]));
-        console.log(calcPwrAvg(pwrTimArr, [0, 300000]));
-        console.log(calcPwrAvg(pwrTimArr, [0, 600000]));
-        console.log(calcPwrAvg(pwrTimArr, [0, 900000]));
-        console.log(calcPwrAvg(pwrTimArr));
+		createGraph(data.samples);
+
+		//Get the power stats and time isolated to be used in multiple functions
+		let pwrTimArr = getPowerStats(data.samples);
+
+		const pwrAvg0 = calcPwrAvg(pwrTimArr);
+		const pwrAvg1 = calcPwrAvg(pwrTimArr, [0, 900000]);
+		const pwrAvg2 = calcPwrAvg(pwrTimArr, [0, 600000]);
+		const pwrAvg3 = calcPwrAvg(pwrTimArr, [0, 300000]);
+		const pwrAvg4 = calcPwrAvg(pwrTimArr, [0, 60000]);
+
+		$("#pwrAvg0").text("20 minute best power effort: " + pwrAvg0);
+		$("#pwrAvg1").text("15 minute best power effort: " + pwrAvg1);
+		$("#pwrAvg2").text("10 minute best power effort: " + pwrAvg2);
+		$("#pwrAvg3").text("5 minute best power effort: " + pwrAvg3);
+		$("#pwrAvg4").text("1 minute best power effort: " + pwrAvg4);
 	}
 
-    //
+	//Parse the JSON data of just Latitude and Longitude info to map out the travelled path
 	function getLatLongs(data, timeBounds) {
 		let latLongArr = [];
 		let lookInto;
@@ -81,9 +109,9 @@
 
 	let polyline;
 
+	//Creates the map using Leaflet JS API with given JSON data and timeBounds given in milliseconds
 	function createMap(data, timeBounds) {
 		const coordsArr = getLatLongs(data, timeBounds);
-		console.log(coordsArr);
 
 		var pMap = L.map('pathMap').setView([coordsArr[0][0], coordsArr[0][1]], 13);
 		polyline = L.polyline(coordsArr, {color: 'blue'}).addTo(pMap);
@@ -94,15 +122,14 @@
 			id: 'mapbox.streets',
 			accessToken: MAPBOX_API_TOKEN
 		}).addTo(pMap);
-
 	}
 
-
+	//Returns an array of JSON with just the time and power information to create the graph
 	function getPowerStats(data) {
 		let pwrTimeArr = [];
 
 		for (let key in data) {
-            let time = data[key].millisecondOffset;
+			let time = data[key].millisecondOffset;
 			let power = data[key].values.power;
 
 			if (power) {
@@ -112,7 +139,7 @@
 		return pwrTimeArr;
 	}
 
-    //Call in the external mapping API with the data sent from the API request to...
+	//Utilizing Plotly JS API (Wraps around D3) to create the power effort graph
 	function createGraph(data) {
 		const pwrTimeStatsArr = getPowerStats(data);
 		let xData = [];
@@ -121,7 +148,7 @@
 
 		$.each(pwrTimeStatsArr, function (index, value) {
 			$.each(value, function (key, value) {
-				key === 'time' ? xData.push((value/ 1000) / 60) : yData.push(value)
+				key === 'time' ? xData.push((value / 1000) / 60) : yData.push(value)
 			})
 		});
 
@@ -147,13 +174,12 @@
 			yaxis: {
 				title: 'Power'
 			}
-		}
+		};
 
 		Plotly.newPlot(graphDiv, plotData, layout);
 
-		//TODO have click handler reset map to all latlongs
 		graphDiv.on('plotly_selected', function (eventData) {
-			console.log(eventData.range.x);
+			//console.log(eventData.range.x);
 			let begMilliTime = (eventData.range.x[0] * 60) * 1000;
 			let endMilliTime = (eventData.range.x[1] * 60) * 1000;
 			let milliTime = [begMilliTime, endMilliTime];
@@ -163,7 +189,7 @@
 		});
 	}
 
-    //Recursive function that will calculate the highest continuous average of power for the given time period that is lasso'd over the graph UI
+	//Recursive function that will calculate the highest continuous average of power for the given time period that is lasso'd over the graph UI
 	function calcPwrAvg(data, timeBounds = [0, 1200000], allAvg = [0]) {
 
 		let lookInto = data.filter((item) => {
@@ -183,6 +209,7 @@
 		return lookInto[lookInto.length - 1] === data[data.length - 1] ? allAvg : calcPwrAvg(data, [timeBounds[0] + 1000, timeBounds[1] + 1000], allAvg);
 	}
 
-		dataReq();
+	//Init main function
+	dataReq();
 </script>
 </html>
